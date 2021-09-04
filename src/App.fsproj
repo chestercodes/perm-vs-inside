@@ -5,6 +5,7 @@
     <ItemGroup>
         <None Include="index.html" />
         <Compile Include="Fable.Import.Chartjs.fs" />
+        <Compile Include="Calculate.fs" />
         <Compile Include="Extensions.fs" />
         <Compile Include="Components.fs" />
         <Compile Include="Main.fs" />
