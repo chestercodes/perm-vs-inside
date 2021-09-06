@@ -12,6 +12,8 @@
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Feliz" Version="1.51.0" />
+        <PackageReference Include="Feliz.Bulma" Version="2.17.0" />
+        <PackageReference Include="Feliz.Plotly" Version="2.1.0" />
         <PackageReference Include="Feliz.Router" Version="3.8.0" />
         <PackageReference Include="Fable.DateFunctions" Version="3.7.0" />
     </ItemGroup>
