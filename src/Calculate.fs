@@ -57,22 +57,59 @@ let calculatePension
     
 let calculateTaxAndTakehome
     (gross: float<gbp>)
-    (pensionOpt: Pension option) =
+    (pensionOpt: Pension option)
+    removeEmployerNI =
     
     let returnNetAmount netAmount =
         Takehome {
             Amount = netAmount
             Label = "Net amount"
         }
+    
+    let splitTaxes grossVal = fun (lower, upperOpt, percentage, label) -> 
+        let bracketGross = 
+            match upperOpt with
+            | None -> 
+                if grossVal > lower then grossVal - lower else 0.<gbp>
+            | Some upper ->
+                match grossVal with
+                | g when g < lower -> 0.<gbp>
+                | g when g > upper -> upper - lower
+                | g -> g - lower
+        (bracketGross, percentage)
+
+    let employerNIBracketsAndAmounts = [
+            (0.<gbp>,    Some 737.<gbp>,  0.0<percent>,  "Employer NI @ 0%")
+            (737.<gbp>,  Some 4189.<gbp>, 13.8<percent>, "Employer NI @ 13.8%")
+            (4189.<gbp>, None,            13.8<percent>, "Employer NI (top) @ 13.8%")
+        ]
+
+    let applyTaxes gross taxes =
+        taxes 
+        |> List.map (fun tax -> 
+            let (_, _, _, label) = tax
+            let (bracketGross, percentage) = splitTaxes gross tax
+            let amount = percentageOfAmount bracketGross percentage
+            {
+                Amount = amount
+                Label = label
+            }
+        )
+
+    let employerNIParts =
+        if removeEmployerNI then
+            applyTaxes gross employerNIBracketsAndAmounts
+        else []
+    let employersNITotal = employerNIParts |> List.sumBy (fun a -> a.Amount)
 
     let grossForTax = 
         match pensionOpt with
         | Some pension ->
             match pension with
             | CompanyContribution contribution ->
-                gross - (percentageOfAmount gross contribution.Personal)
-        | None -> gross
-    printfn "After pension and bonus %f" grossForTax
+                gross - employersNITotal - (percentageOfAmount gross contribution.Personal)
+        | None -> gross - employersNITotal
+    printfn "After employers NI, pension and bonus %f" grossForTax
     
     let taxFreeAllowance =
         let maxLower = 12579.<gbp>
@@ -85,42 +122,38 @@ let calculateTaxAndTakehome
             printfn "Difference to lower %f" diff
             let deduction = Convert.ToInt32(System.Math.Round((diff / 1.<gbp>)))
             printfn "Deduction %i" deduction
-            let amount = maxLower - (float (deduction / 2) * 1.<gbp>)
-            printfn "Amount %f" amount
-            amount
+            let amount = (maxLower - (float (deduction / 2) * 1.<gbp>))
+            printfn "Amount %f per year" amount
+            amount / 12.
     printfn "Tax free allowance %f" taxFreeAllowance
     
-    let getIncomeBracketsAndAmounts taxFree = [
-            (0.<gbp>,      Some taxFree,      0.0<percent>)
-            (taxFree,      Some 50270.<gbp>,  20.0<percent>)
-            (50270.<gbp>,  Some 150000.<gbp>, 40.0<percent>)
-            (150000.<gbp>, None,              45.0<percent>)
-        ]
+    let yearToMonth ((a: float<gbp>), (b: float<gbp> option), (c: float<percent>), d) =
+        let upper = Option.map(fun u -> u / 12.) b
+        (a / 12., upper, c, d)
 
-    let nIBracketsAndAmounts = [
-            (0.<gbp>,     Some 9568.<gbp>,  0.0<percent>)
-            (9568.<gbp>,  Some 50270.<gbp>, 12.0<percent>)
-            (50270.<gbp>, None,             2.0<percent>)
+    let getIncomeBracketsAndAmounts taxFree =
+        let yearValues = [
+            (0.<gbp>,      Some taxFree,      0.0<percent>, "Untaxed income")
+            (taxFree,      Some 50270.<gbp>,  20.0<percent>, "Income tax @ 20%")
+            (50270.<gbp>,  Some 150000.<gbp>, 40.0<percent>, "Income tax @ 40%")
+            (150000.<gbp>, None,              45.0<percent>, "Income tax @ 45%")
         ]
+        yearValues |> List.map yearToMonth
+
+    let employeeNIBracketsAndAmounts =
+        [
+            (0.<gbp>,    Some 737.<gbp>,  0.0<percent>, "Employee NI @ 0%")
+            (737.<gbp>,  Some 4189.<gbp>, 12.0<percent>, "Employee NI @ 12%")
+            (4189.<gbp>, None,             2.0<percent>, "Employee NI @ 2%")
+        ]
+        |> List.map yearToMonth
 
     let incomeTaxBracketsAndAmounts = getIncomeBracketsAndAmounts taxFreeAllowance
-    
-    let splitTaxes = fun (lower, upperOpt, percentage) -> 
-        let bracketGross = 
-            match upperOpt with
-            | None -> 
-                if grossForTax > lower then grossForTax - lower else 0.<gbp>
-            | Some upper ->
-                match grossForTax with
-                | g when g < lower -> 0.<gbp>
-                | g when g > upper -> upper - lower
-                | g -> g - lower
-        (bracketGross, percentage)
 
     let incomeTaxes =
         incomeTaxBracketsAndAmounts 
         |> List.map (fun tax -> 
-            let (bracketGross, percentage) = splitTaxes tax
+            let (bracketGross, percentage) = splitTaxes grossForTax tax
             let amount = percentageOfAmount bracketGross percentage
             {
                 Amount = amount
@@ -128,18 +161,18 @@ let calculateTaxAndTakehome
             }
         )
 
-    let nITaxes =
-        nIBracketsAndAmounts 
+    let employeeNITaxes =
+        employeeNIBracketsAndAmounts 
         |> List.map (fun tax -> 
-            let (bracketGross, percentage) = splitTaxes tax
+            let (bracketGross, percentage) = splitTaxes grossForTax tax
             let amount = percentageOfAmount bracketGross percentage
             {
                 Amount = amount
-                Label = (sprintf "NI contribution @ %f" percentage)
+                Label = (sprintf "Employee NI @ %f" percentage)
             }
         )
     
-    let allTaxes = incomeTaxes @ nITaxes //|> List.filter (fun g -> g.Amount > 0.)
+    let allTaxes = incomeTaxes @ employeeNITaxes @ employerNIParts |> List.filter (fun g -> g.Amount > 0.<gbp>)
     let totalTax = allTaxes |> List.sumBy (fun g -> g.Amount)
 
     [
@@ -151,7 +184,8 @@ let calculateTaxAndTakehome
 let calculatePerm
     gross
     (bonusOpt: Bonus option)
-    (pensionOpt: Pension option) =
+    (pensionOpt: Pension option)
+    removeEmployerNI =
     
     let totalGross =
         match bonusOpt with
@@ -161,13 +195,12 @@ let calculatePerm
     printfn "Total gross %f" totalGross
     
     [
-        calculateTaxAndTakehome totalGross pensionOpt
+        calculateTaxAndTakehome totalGross pensionOpt removeEmployerNI
         calculatePension totalGross pensionOpt
     ]
     |> List.collect id
 
-let calculateInside
-    dayRate
-    weeksWorked =
-    let gross = dayRate * 5 * weeksWorked |> float
+let calculateInside dayRate =
+    let workDaysPerMonth = 5 * 4
+    let gross = dayRate * workDaysPerMonth |> float
     calculatePerm (gross * 1.<gbp>) None None

@@ -20,7 +20,9 @@ module Chart =
         let blacks = [ black1; black2; black3 ]
         
         let folder = fun ((nred, nblack), agg) ((redOrBlack: RedOrBlack), label, (values: float<gbp> list)) ->
-            let values = values |> List.map (fun x -> x / 1.0<gbp>)
+            let values =
+                values
+                |> List.map (fun x -> x / 1.0<gbp>)
             let colourRbg = 
                 match redOrBlack with
                 | Red -> reds.[nred % 3]
@@ -122,11 +124,11 @@ type Components =
         let (pensionPersonal, setPensionPersonal) = React.useState(8.)
 
         let (dayRate, setDayRate) = React.useState(350)
-        let (numberOfWeeks, setNumberOfWeeks) = React.useState(44)
+        //let (numberOfWeeks, setNumberOfWeeks) = React.useState(44)
         
         let (showDetailed, setShowDetailed) = React.useState(false)
 
-        let insideParts = calculateInside dayRate numberOfWeeks
+        let insideParts = calculateInside dayRate true 
         
         let pension = CompanyContribution {
             Personal = (pensionPersonal * 1.0<percent>)
@@ -134,9 +136,10 @@ type Components =
             }
         let permParts =
             calculatePerm
-                (grossSalary * 1.0<gbp>)
+                ((grossSalary / 12.) * 1.0<gbp>)
                 (Some (Bonus.Percentage (bonus * 1.0<percent>)))
                 (Some pension)
+                false
         
         let grossSalaryChanged = fun (s) -> s |> setGrossSalary
         let bonusChanged = fun (s) -> s |> setBonus
@@ -166,15 +169,15 @@ type Components =
                                     ]
                                 ]
                             ]
-                            Bulma.field.div [
-                                Bulma.label "Number of weeks"
-                                Bulma.control.div [
-                                    Bulma.input.number [
-                                        prop.onChange setNumberOfWeeks
-                                        prop.value numberOfWeeks
-                                    ]
-                                ]
-                            ]
+                            // Bulma.field.div [
+                            //     Bulma.label "Number of weeks"
+                            //     Bulma.control.div [
+                            //         Bulma.input.number [
+                            //             prop.onChange setNumberOfWeeks
+                            //             prop.value numberOfWeeks
+                            //         ]
+                            //     ]
+                            // ]
                         ]
                     ]
                 ]
